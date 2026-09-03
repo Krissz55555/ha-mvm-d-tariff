@@ -1,37 +1,91 @@
-# MVM D tarifa – Home Assistant
+# ⚡ MVM D tarifa – Home Assistant
 
-Nem hivatalos Home Assistant integráció az MVM D dinamikus tarifa aktuális árának becsléséhez.
+Nem hivatalos Home Assistant integráció az **MVM D dinamikus tarifa** aktuális villamosenergia-árának becsléséhez.
+
+Az integráció célja, hogy a D tarifához kapcsolódó aktuális piaci árat Home Assistant szenzorokként tegye elérhetővé, így később automatizálásokhoz, energiafelügyelethez vagy például EV-töltés vezérléséhez is felhasználható legyen.
 
 ## Szenzorok
 
-- **D tarifa – Aktuális teljes ár (becs.)** – becsült bruttó Ft/kWh ár
-- **D tarifa – HUPX nyers ár** – aktuális HUPX ár Ft/kWh-ra átszámítva
+Az integráció jelenleg két szenzort hoz létre:
 
-A becsült teljes ár jelenleg az aktuális HUPX árból, az MNB EUR/HUF árfolyamából, az MVM kereskedői díjából, a fogyasztásarányos rendszerhasználati díjakból és 27% ÁFÁ-ból készül.
+- **D tarifa – Aktuális teljes ár (becs.)**  
+  Becsült aktuális bruttó villamosenergia-ár **Ft/kWh** értékben.
 
-## Fontos
+- **D tarifa – HUPX nyers ár**  
+  Az aktuális HUPX villamosenergia-piaci ár **Ft/kWh** értékre átszámítva.
 
-Az integráció fejlesztés alatt áll. Az MVM D tarifa minden részlete és elszámolási feltétele még nem ismert, ezért a teljes ár **becslés**.
+A becsült teljes ár jelenleg az aktuális **HUPX árból**, az **MNB EUR/HUF árfolyamából**, az **MVM kereskedői díjából**, a fogyasztásarányos **rendszerhasználati díjakból** és **27% ÁFÁ-ból** készül.
+
+## ⚠️ Fontos
+
+Az integráció fejlesztés alatt áll.
+
+Az MVM D tarifa minden részlete és elszámolási feltétele jelenleg még nem ismert, ezért az integráció által számított teljes ár **becslés**.
 
 A **rezsicsökkentett fogyasztási keret és annak kedvezményes ára jelenleg nem része a számításnak**.
 
-Az éves/fix alapdíjak sincsenek beleszámítva, mert a szenzor az aktuális 1 kWh becsült változó költségét mutatja.
+Az integráció ezért elsősorban az aktuális, változó D tarifa költségének követésére szolgál.
 
-Ez egy közösségi projekt, nem hivatalos MVM-integráció.
+## Telepítés HACS segítségével
 
-## Telepítés HACS-ból teszteléshez
+1. Nyisd meg a **HACS → Integrációk** oldalt.
+2. Jobb felső sarokban válaszd a **⋮ → Egyedi repók** lehetőséget.
+3. Add hozzá ezt a repository-t:
 
-1. HACS → Integrációk → jobb felső három pont → **Egyéni tárolók / Custom repositories**.
-2. Add hozzá a GitHub repository URL-jét **Integration** típussal.
-3. Telepítsd az **MVM D Tariff** integrációt.
-4. Indítsd újra a Home Assistantot.
-5. Beállítások → Eszközök és szolgáltatások → Integráció hozzáadása → **MVM D Tariff**.
+   `https://github.com/Krissz55555/ha-mvm-d-tariff`
+
+4. Típusnak válaszd az **Integráció** lehetőséget.
+5. Keresd meg az **MVM D Tariff** integrációt, majd telepítsd.
+6. Indítsd újra a Home Assistantot.
+7. Menj a **Beállítások → Eszközök és szolgáltatások → Integráció hozzáadása** menübe.
+8. Keresd meg az **MVM D tarifa** integrációt és add hozzá.
+
+A konfiguráció után a szenzorok automatikusan létrejönnek.
 
 ## Adatforrások
 
-- HUPX / Energy-Charts – aktuális magyar negyedórás day-ahead ár
-- Magyar Nemzeti Bank – hivatalos EUR/HUF árfolyam
-- MVM – közzétett D tarifa és díjtételek
+- **HUPX / Energy-Charts** – aktuális magyar villamosenergia-piaci ár
+- **Magyar Nemzeti Bank** – hivatalos EUR/HUF árfolyam
+- **MVM** – közzétett D tarifa díjtételek
+
+## Státusz
+
+🧪 **Korai fejlesztési verzió**
+
+Az integráció működőképes, de a D tarifa végleges elszámolási szabályainak pontosítása miatt a számítás a későbbiekben változhat.
+
+Hibajelzések, tapasztalatok és fejlesztési javaslatok szívesen fogadottak.
+
+---
+
+## Credits
+
+Created and maintained by **Kocsis Krisztián**.
+
+Developed by Kocsis Krisztián with implementation assistance, architecture discussions and documentation support from **ChatGPT (OpenAI)**.
+
+⭐ Ha hasznosnak találod az integrációt, egy GitHub csillaggal támogathatod a projektet.
+
+---
+
+## Project Statistics
+
+![GitHub Downloads](https://img.shields.io/github/downloads/Krissz55555/ha-mvm-d-tariff/total?label=Downloads)
+![GitHub Stars](https://img.shields.io/github/stars/Krissz55555/ha-mvm-d-tariff?style=flat&label=Stars)
+
+---
+
+## ☕ Támogatás
+
+Az **MVM D tarifa – Home Assistant** integráció ingyenes és nyílt forráskódú.
+
+Ha hasznosnak találod a projektet, és támogatnád a további fejlesztést, tesztelést és új funkciók elkészítését, meghívhatsz egy kávéra:
+
+☕ [Buy me a coffee](https://buymeacoffee.com/krissz55555)
+
+Köszönöm a támogatást!
+
+---
 
 ## Licenc
 
