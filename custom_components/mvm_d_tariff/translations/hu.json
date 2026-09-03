@@ -1,0 +1,27 @@
+{
+  "title": "MVM D tarifa",
+  "config": {
+    "step": {
+      "user": {
+        "title": "MVM D tarifa beállítása",
+        "description": "Létrehoz egy szenzort a kedvezményes fogyasztási sáv feletti D tarifa becsült bruttó Ft/kWh árához."
+      }
+    },
+    "abort": {
+      "already_configured": "Az MVM D tarifa integráció már be van állítva."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tarifa paraméterek",
+        "data": {
+          "merchant_fee_huf_kwh": "Kereskedői díj (nettó Ft/kWh)",
+          "transmission_fee_huf_kwh": "Átviteli forgalmi díj (nettó Ft/kWh)",
+          "distribution_fee_huf_kwh": "Elosztói forgalmi díj (nettó Ft/kWh)",
+          "vat_percent": "ÁFA (%)"
+        }
+      }
+    }
+  }
+}
