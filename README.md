@@ -1,20 +1,99 @@
 # ⚡ MVM D tarifa – Home Assistant
 
-Nem hivatalos Home Assistant integráció az **MVM D dinamikus tarifa** aktuális villamosenergia-árának becsléséhez.
+Nem hivatalos Home Assistant integráció az **MVM D dinamikus tarifa** villamosenergia-árának követéséhez és becsléséhez.
 
-Az integráció célja, hogy a D tarifához kapcsolódó aktuális piaci árat Home Assistant szenzorokként tegye elérhetővé, így később automatizálásokhoz, energiafelügyelethez vagy például EV-töltés vezérléséhez is felhasználható legyen.
+Az integráció célja, hogy a D tarifához kapcsolódó aktuális és day-ahead piaci árakat Home Assistant szenzorokként tegye elérhetővé, így azok automatizálásokhoz, energiafelügyelethez, költségkövetéshez vagy például EV-töltés vezérléséhez is felhasználhatók legyenek.
+
+## ✨ Főbb lehetőségek
+
+- Aktuális becsült **D tarifa teljes ár** (Ft/kWh)
+- Aktuális **HUPX nyers piaci ár**
+- Teljes napi **96 × 15 perces day-ahead (DAM) ár-előrejelzés**
+- Napi minimum, maximum és átlagos előrejelzett ár
+- Beépített **24 órás ár-előrejelzési grafikon**
+- Beállítható **„Olcsó időszak” binary sensor** automatizálásokhoz
+- Opcionális fogyasztásmérő hozzárendelése
+- Havi fogyasztás és becsült **D tarifa költség**
+- Összehasonlítás az **A1 tarifával**
+
+A teljes napi 96 pontos előrejelzés egyetlen szenzor strukturált adataként érhető el, ezért az integráció nem hoz létre 96 külön entitást.
+
+## 📊 Ár-előrejelzés
+
+A **D tarifa – Mai előrejelzett ár** szenzor a teljes napi day-ahead (DAM) adatsort tartalmazza.
+
+Az integráció saját Home Assistant kártyát is tartalmaz:
+
+**MVM D tarifa – Napi ár-előrejelzés**
+
+A kártya megjeleníti:
+
+- az aktuális előrejelzett árat,
+- a napi minimumot,
+- a napi átlagot,
+- a napi maximumot,
+- valamint a teljes 00:00–24:00 közötti ár-előrejelzést.
+
+A grafikon használatához **nem szükséges ApexCharts vagy más külön frontend-kiegészítő**.
+
+## ⚙️ Beállítások
+
+Az integráció hozzáadása után a
+
+**Beállítások → Eszközök és szolgáltatások → MVM D tarifa → Beállítások**
+
+menüpontban módosíthatók a számításhoz használt értékek.
+
+Beállítható többek között:
+
+- kereskedői díj,
+- átviteli díj,
+- elosztói díj,
+- ÁFA,
+- A1 referenciaár,
+- az „Olcsó D tarifa” határértéke,
+- valamint opcionálisan egy Home Assistantban már meglévő fogyasztásmérő energia-szenzor.
+
+### ⚡ Fogyasztásmérő kiválasztása
+
+A havi fogyasztás- és költségszámításhoz az integráció **kWh-alapú energia szenzort** használ.
+
+A kiválasztott entitásnak az elfogyasztott energiát kell mérnie:
+
+- **kWh-alapú energia szenzor:** ✅
+- **pillanatnyi teljesítmény (W vagy kW):** ❌
+
+Például megfelelő egy villanyóra, okosmérő vagy fogyasztásmérő olyan Home Assistant entitása, amelynek értéke az összesített elfogyasztott energiát mutatja kWh-ban.
+
+Az integráció a kWh mérőállás változásából számolja az adott hónapban felhasznált energiát.
+
+Ennek alapján létrehozza többek között:
+
+- **D tarifa – Havi mért fogyasztás**
+- **D tarifa – Havi költség (becs.)**
+- **A1 tarifa – Havi költség**
+- **D tarifa – Havi különbség az A1-hez képest**
+
+Így ugyanaz a ténylegesen mért fogyasztás összehasonlítható a becsült D tarifa és az A1 tarifa alapján.
+
+Az **Olcsó időszak** binary sensor akkor kapcsol be, amikor az aktuális becsült D tarifa ára a felhasználó által beállított határérték alatt van. Ez közvetlenül használható Home Assistant automatizálásokban.
+
 
 ## Szenzorok
 
-Az integráció jelenleg két szenzort hoz létre:
+Az integráció többek között az alábbi entitásokat hozza létre:
 
-- **D tarifa – Aktuális teljes ár (becs.)**  
-  Becsült aktuális bruttó villamosenergia-ár **Ft/kWh** értékben.
+- **D tarifa – Aktuális teljes ár (becs.)**
+- **D tarifa – HUPX nyers ár**
+- **D tarifa – Mai előrejelzett ár**
+- **D tarifa – Mai minimum előrejelzett ár**
+- **D tarifa – Mai maximum előrejelzett ár**
+- **D tarifa – Mai átlagos előrejelzett ár**
+- **D tarifa – Olcsó időszak**
 
-- **D tarifa – HUPX nyers ár**  
-  Az aktuális HUPX villamosenergia-piaci ár **Ft/kWh** értékre átszámítva.
+Fogyasztásmérő hozzárendelése esetén további költség- és fogyasztási szenzorok is létrejönnek.
 
-A becsült teljes ár jelenleg az aktuális **HUPX árból**, az **MNB EUR/HUF árfolyamából**, az **MVM kereskedői díjából**, a fogyasztásarányos **rendszerhasználati díjakból** és **27% ÁFÁ-ból** készül.
+A becsült teljes ár az aktuális **HUPX árból**, az **MNB EUR/HUF árfolyamából**, az ismert **kereskedői díjból**, a fogyasztásarányos **rendszerhasználati díjakból** és **27% ÁFÁ-ból** készül.
 
 ## ⚠️ Fontos
 
@@ -24,9 +103,9 @@ Az MVM D tarifa minden részlete és elszámolási feltétele jelenleg még nem 
 
 A **rezsicsökkentett fogyasztási keret és annak kedvezményes ára jelenleg nem része a számításnak**.
 
-Az integráció ezért elsősorban az aktuális, változó D tarifa költségének követésére szolgál.
+Az integráció ezért elsősorban az aktuális és várható D tarifa költségének követésére, összehasonlítására és automatizálások készítésére szolgál.
 
-## Telepítés HACS segítségével
+## 📦 Telepítés HACS segítségével
 
 1. Nyisd meg a **HACS → Integrációk** oldalt.
 2. Jobb felső sarokban válaszd a **⋮ → Egyedi repók** lehetőséget.
@@ -40,17 +119,25 @@ Az integráció ezért elsősorban az aktuális, változó D tarifa költségén
 7. Menj a **Beállítások → Eszközök és szolgáltatások → Integráció hozzáadása** menübe.
 8. Keresd meg az **MVM D tarifa** integrációt és add hozzá.
 
-A konfiguráció után a szenzorok automatikusan létrejönnek.
+A konfiguráció után a szükséges entitások automatikusan létrejönnek.
+
+### Napi ár-előrejelzés kártya
+
+A dashboard szerkesztésénél válaszd:
+
+**Kártya hozzáadása → MVM D tarifa – Napi ár-előrejelzés**
+
+A kártya az integráció része, külön HACS frontend-kiegészítő telepítése nem szükséges.
 
 ## Adatforrások
 
-- **HUPX / Energy-Charts** – aktuális magyar villamosenergia-piaci ár
+- **HUPX / Energy-Charts** – magyar villamosenergia-piaci és day-ahead adatok
 - **Magyar Nemzeti Bank** – hivatalos EUR/HUF árfolyam
 - **MVM** – közzétett D tarifa díjtételek
 
 ## Státusz
 
-🧪 **Korai fejlesztési verzió**
+🧪 **Fejlesztési verzió – v0.2.0**
 
 Az integráció működőképes, de a D tarifa végleges elszámolási szabályainak pontosítása miatt a számítás a későbbiekben változhat.
 
