@@ -3,23 +3,25 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up MVM D Tariff",
-        "description": "Creates a sensor for the estimated gross D-tariff price above the discounted consumption band."
+        "title": "MVM D Tariff",
+        "description": "Unofficial D tariff calculator. The total price is an estimate."
       }
     },
-    "abort": {
-      "already_configured": "MVM D Tariff is already configured."
-    }
+    "abort": {"already_configured": "The integration is already configured."}
   },
   "options": {
     "step": {
       "init": {
-        "title": "Tariff parameters",
+        "title": "MVM D Tariff options",
+        "description": "The energy meter is optional. Monthly D/A1 cost sensors are created only when an energy (kWh) sensor is selected.",
         "data": {
-          "merchant_fee_huf_kwh": "Merchant fee (net Ft/kWh)",
-          "transmission_fee_huf_kwh": "Transmission fee (net Ft/kWh)",
-          "distribution_fee_huf_kwh": "Distribution fee (net Ft/kWh)",
-          "vat_percent": "VAT (%)"
+          "merchant_fee_huf_kwh": "Merchant fee (net HUF/kWh)",
+          "transmission_fee_huf_kwh": "Transmission fee (net HUF/kWh)",
+          "distribution_fee_huf_kwh": "Distribution fee (net HUF/kWh)",
+          "vat_percent": "VAT (%)",
+          "a1_price_huf_kwh": "A1 reference price (gross HUF/kWh)",
+          "cheap_threshold_huf_kwh": "Cheap D tariff threshold (HUF/kWh)",
+          "energy_entity_id": "Energy consumption sensor (kWh)"
         }
       }
     }

@@ -1,7 +1,7 @@
 {
   "domain": "mvm_d_tariff",
   "name": "MVM D Tariff",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "config_flow": true,
   "single_config_entry": true,
   "documentation": "https://github.com/Krissz55555/ha-mvm-d-tariff",
@@ -9,7 +9,9 @@
   "codeowners": [
     "@Krissz55555"
   ],
-  "dependencies": [],
+  "dependencies": [
+    "frontend"
+  ],
   "integration_type": "service",
   "iot_class": "cloud_polling"
 }
