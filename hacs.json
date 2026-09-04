@@ -1,4 +1,6 @@
 {
   "name": "MVM D Tariff",
-  "country": ["HU"]
+  "country": ["HU"],
+  "zip_release": true,
+  "filename": "ha-mvm-d-tariff.zip"
 }
