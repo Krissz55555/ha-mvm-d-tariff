@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from homeassistant.components.frontend import add_extra_js_url, remove_extra_js_url
+from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
 from .coordinator import MvmDTariffCoordinator
@@ -16,25 +17,33 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 CARD_PATH = FRONTEND_DIR / "mvm-d-tariff-card.js"
-CARD_URL = "/mvm_d_tariff/frontend/mvm-d-tariff-card.js?v=0.2.0"
 CARD_STATIC_URL = "/mvm_d_tariff/frontend/mvm-d-tariff-card.js"
+CARD_URL = f"{CARD_STATIC_URL}?v=0.2.0"
 
-_FRONTEND_STATIC_REGISTERED = "_frontend_static_registered"
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up global MVM D tariff resources once per Home Assistant process."""
+
+    # Global frontend resources must not be tied to config-entry reloads.
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                CARD_STATIC_URL,
+                str(CARD_PATH),
+                cache_headers=False,
+            )
+        ]
+    )
+    add_extra_js_url(hass, CARD_URL)
+
+    hass.data.setdefault(DOMAIN, {})
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up one MVM D tariff config entry."""
+
     domain_data = hass.data.setdefault(DOMAIN, {})
-
-    # The aiohttp static route cannot be removed during a config-entry reload.
-    # Register it only once for the lifetime of the Home Assistant process.
-    if not domain_data.get(_FRONTEND_STATIC_REGISTERED):
-        await hass.http.async_register_static_paths([
-            StaticPathConfig(CARD_STATIC_URL, str(CARD_PATH), cache_headers=False)
-        ])
-        domain_data[_FRONTEND_STATIC_REGISTERED] = True
-
-    # This frontend resource may be removed/re-added on config-entry reload.
-    add_extra_js_url(hass, CARD_URL)
 
     coordinator = MvmDTariffCoordinator(hass, entry)
     await coordinator.async_load_cached_forecast()
@@ -47,16 +56,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
         "cost_tracker": tracker,
     }
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry after options are changed."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload one config entry without unregistering global frontend resources."""
+
     domain_data = hass.data.get(DOMAIN, {})
     data = domain_data.get(entry.entry_id)
 
@@ -65,8 +78,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok and data:
         await data["cost_tracker"].async_unload()
         domain_data.pop(entry.entry_id, None)
-
-    if unload_ok:
-        remove_extra_js_url(hass, CARD_URL)
 
     return unload_ok
