@@ -20,11 +20,13 @@ CARD_PATH = FRONTEND_DIR / "mvm-d-tariff-card.js"
 CARD_STATIC_URL = "/mvm_d_tariff/frontend/mvm-d-tariff-card.js"
 CARD_URL = f"{CARD_STATIC_URL}?v=0.2.0"
 
+_FRONTEND_JS_REGISTERED = "_frontend_js_registered"
+
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up global MVM D tariff resources once per Home Assistant process."""
 
-    # Global frontend resources must not be tied to config-entry reloads.
+    # The static HTTP route must only be registered once per HA process.
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(
@@ -34,7 +36,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             )
         ]
     )
-    add_extra_js_url(hass, CARD_URL)
 
     hass.data.setdefault(DOMAIN, {})
     return True
@@ -44,6 +45,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up one MVM D tariff config entry."""
 
     domain_data = hass.data.setdefault(DOMAIN, {})
+
+    # Register the Lovelace card resource once.
+    # This remains available across config-entry reloads.
+    if not domain_data.get(_FRONTEND_JS_REGISTERED):
+        add_extra_js_url(hass, CARD_URL)
+        domain_data[_FRONTEND_JS_REGISTERED] = True
 
     coordinator = MvmDTariffCoordinator(hass, entry)
     await coordinator.async_load_cached_forecast()
