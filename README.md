@@ -78,7 +78,6 @@ Ennek alapján létrehozza többek között:
 
 Az **Olcsó időszak** binary sensor akkor kapcsol be, amikor az aktuális becsült D tarifa ára a felhasználó által beállított határérték alatt van. Ez közvetlenül használható Home Assistant automatizálásokban.
 
-
 ## Szenzorok
 
 Az integráció többek között az alábbi entitásokat hozza létre:
@@ -105,11 +104,6 @@ A **rezsicsökkentett fogyasztási keret és annak kedvezményes ára jelenleg n
 
 Az integráció ezért elsősorban az aktuális és várható D tarifa költségének követésére, összehasonlítására és automatizálások készítésére szolgál.
 
-A grafikon egyszeri beállítása:
-Beállítások → Irányítópultok → Erőforrások → Erőforrás hozzáadása
-URL: /mvm_d_tariff/frontend/mvm-d-tariff-card.js?v=0.2.0
-Típus: JavaScript module
-
 ## 📦 Telepítés HACS segítségével
 
 1. Nyisd meg a **HACS → Integrációk** oldalt.
@@ -120,19 +114,41 @@ Típus: JavaScript module
 
 4. Típusnak válaszd az **Integráció** lehetőséget.
 5. Keresd meg az **MVM D Tariff** integrációt, majd telepítsd.
-6. Indítsd újra a Home Assistantot.
+6. **Indítsd újra a Home Assistantot.**
 7. Menj a **Beállítások → Eszközök és szolgáltatások → Integráció hozzáadása** menübe.
 8. Keresd meg az **MVM D tarifa** integrációt és add hozzá.
 
 A konfiguráció után a szükséges entitások automatikusan létrejönnek.
 
-### Napi ár-előrejelzés kártya
+## 📈 Napi ár-előrejelzés kártya beállítása
 
-A dashboard szerkesztésénél válaszd:
+A v0.2.0 saját Home Assistant kártyát tartalmaz. A kártyához **nem szükséges ApexCharts vagy más külön HACS frontend-kiegészítő**.
+
+A kártya használatához egyszer hozzá kell adni a mellékelt JavaScript modult a Home Assistant erőforrásaihoz.
+
+Menj ide:
+
+**Beállítások → Irányítópultok → ⋮ → Erőforrások → Erőforrás hozzáadása**
+
+Add meg az alábbi URL-t:
+
+`/mvm_d_tariff/frontend/mvm-d-tariff-card.js?v=0.2.0`
+
+Típus:
+
+**JavaScript module**
+
+Mentsd el az erőforrást.
+
+Ha a kártya ezután nem jelenik meg azonnal a kártyaválasztóban, frissítsd újra a Home Assistant felületét vagy indítsd újra a Home Assistantot.
+
+Ezután az irányítópult szerkesztésénél válaszd:
 
 **Kártya hozzáadása → MVM D tarifa – Napi ár-előrejelzés**
 
-A kártya az integráció része, külön HACS frontend-kiegészítő telepítése nem szükséges.
+A kártya ezután használatra kész.
+
+> **Megjegyzés:** a JavaScript erőforrást csak egyszer kell hozzáadni. Az integráció későbbi újratöltésekor vagy a beállítások módosításakor ezt nem kell megismételni.
 
 ## Adatforrások
 
