@@ -105,6 +105,11 @@ A **rezsicsökkentett fogyasztási keret és annak kedvezményes ára jelenleg n
 
 Az integráció ezért elsősorban az aktuális és várható D tarifa költségének követésére, összehasonlítására és automatizálások készítésére szolgál.
 
+A grafikon egyszeri beállítása:
+Beállítások → Irányítópultok → Erőforrások → Erőforrás hozzáadása
+URL: /mvm_d_tariff/frontend/mvm-d-tariff-card.js?v=0.2.0
+Típus: JavaScript module
+
 ## 📦 Telepítés HACS segítségével
 
 1. Nyisd meg a **HACS → Integrációk** oldalt.
