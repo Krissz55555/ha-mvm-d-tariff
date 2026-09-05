@@ -198,3 +198,15 @@ Köszönöm a támogatást!
 ## Licenc
 
 MIT
+
+
+---
+
+<!-- MVM_D_TARIFF_STATS_START -->
+## 📊 MVM D tarifa Statistics
+
+- Repository views: **699**
+- Repository clones: **55**
+- Tracking since: **2026-08-22**
+
+<!-- MVM_D_TARIFF_STATS_END -->
