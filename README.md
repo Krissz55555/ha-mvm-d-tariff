@@ -176,10 +176,14 @@ Developed by Kocsis Krisztián with implementation assistance, architecture disc
 
 ---
 
-## Project Statistics
+<!-- MVM_D_TARIFF_STATS_START -->
+## 📊 MVM D tarifa Statistics
 
-![GitHub Downloads](https://img.shields.io/github/downloads/Krissz55555/ha-mvm-d-tariff/total?label=Downloads)
-![GitHub Stars](https://img.shields.io/github/stars/Krissz55555/ha-mvm-d-tariff?style=flat&label=Stars)
+- Repository views: **699**
+- Repository clones: **55**
+- Tracking since: **2026-08-22**
+
+<!-- MVM_D_TARIFF_STATS_END -->
 
 ---
 
@@ -198,15 +202,3 @@ Köszönöm a támogatást!
 ## Licenc
 
 MIT
-
-
----
-
-<!-- MVM_D_TARIFF_STATS_START -->
-## 📊 MVM D tarifa Statistics
-
-- Repository views: **699**
-- Repository clones: **55**
-- Tracking since: **2026-08-22**
-
-<!-- MVM_D_TARIFF_STATS_END -->
