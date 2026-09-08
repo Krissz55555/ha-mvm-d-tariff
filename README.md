@@ -122,7 +122,7 @@ A konfiguráció után a szükséges entitások automatikusan létrejönnek.
 
 ## 📈 Napi ár-előrejelzés kártya beállítása
 
-A v0.2.0 saját Home Assistant kártyát tartalmaz. A kártyához **nem szükséges ApexCharts vagy más külön HACS frontend-kiegészítő**.
+A v0.2.1 saját Home Assistant kártyát tartalmaz. A kártyához **nem szükséges ApexCharts vagy más külön HACS frontend-kiegészítő**.
 
 A kártya használatához egyszer hozzá kell adni a mellékelt JavaScript modult a Home Assistant erőforrásaihoz.
 
@@ -132,7 +132,7 @@ Menj ide:
 
 Add meg az alábbi URL-t:
 
-`/mvm_d_tariff/frontend/mvm-d-tariff-card.js?v=0.2.0`
+`/mvm_d_tariff/frontend/mvm-d-tariff-card.js?v=0.2.1`
 
 Típus:
 
@@ -158,7 +158,9 @@ A kártya ezután használatra kész.
 
 ## Státusz
 
-🧪 **Fejlesztési verzió – v0.2.0**
+🧪 **Fejlesztési verzió – v0.2.1**
+
+A v0.2.1 javítja az Energy-Charts aktuális ár lekérésének hibakezelését, és ellenállóbbá teszi az entitásokat az átmeneti API-hibákkal szemben.
 
 Az integráció működőképes, de a D tarifa végleges elszámolási szabályainak pontosítása miatt a számítás a későbbiekben változhat.
 
