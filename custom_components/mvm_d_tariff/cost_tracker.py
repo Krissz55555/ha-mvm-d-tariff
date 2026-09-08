@@ -125,7 +125,7 @@ class MvmDCostTracker:
             return
 
         data = self.coordinator.data
-        if data is None:
+        if data is None or data.price_huf_kwh_gross is None:
             # Keep the old baseline; the next valid reading will include this delta.
             return
 

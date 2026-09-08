@@ -63,6 +63,11 @@ class MvmDCurrentPriceSensor(BaseMvmSensor):
         super().__init__(coordinator, entry, "current_total_price")
 
     @property
+    def available(self) -> bool:
+        data = self.coordinator.data
+        return bool(super().available and data and data.price_huf_kwh_gross is not None)
+
+    @property
     def native_value(self):
         return self.coordinator.data.price_huf_kwh_gross if self.coordinator.data else None
 
@@ -82,6 +87,7 @@ class MvmDCurrentPriceSensor(BaseMvmSensor):
             "interval_start": data.interval_start,
             "valid_until": data.valid_until,
             "source_generated_at": data.source_generated_at,
+            "current_price_source": data.current_price_source,
             "scope": "D tarifa – kedvezményes sávhatár feletti becsült bruttó változó költség",
         }
 
@@ -93,6 +99,11 @@ class MvmDHupxRawPriceSensor(BaseMvmSensor):
 
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "hupx_raw_price_huf_kwh")
+
+    @property
+    def available(self) -> bool:
+        data = self.coordinator.data
+        return bool(super().available and data and data.hupx_huf_kwh_net is not None)
 
     @property
     def native_value(self):
@@ -109,6 +120,7 @@ class MvmDHupxRawPriceSensor(BaseMvmSensor):
             "interval_start": data.interval_start,
             "valid_until": data.valid_until,
             "source_generated_at": data.source_generated_at,
+            "current_price_source": data.current_price_source,
             "scope": "Nyers HUPX ár Ft/kWh-ra átszámítva; MVM díjak, RHD és ÁFA nélkül",
         }
 
@@ -122,13 +134,18 @@ class MvmDTodayForecastSensor(BaseMvmSensor):
         super().__init__(coordinator, entry, "today_forecast")
 
     @property
+    def available(self) -> bool:
+        data = self.coordinator.data
+        return bool(super().available and data and data.forecast)
+
+    @property
     def native_value(self):
         data = self.coordinator.data
         if not data or not data.forecast:
             return None
-        now_iso = self.hass.config.time_zone
-        # The current interval price is already the authoritative day-ahead value.
-        return data.price_huf_kwh_gross
+        # This sensor is driven only by the DAM curve and is deliberately
+        # independent from the dedicated current-price endpoint.
+        return data.forecast_current_price_huf_kwh_gross
 
     @property
     def extra_state_attributes(self):
@@ -175,6 +192,11 @@ class _ForecastStatSensor(BaseMvmSensor):
     _attr_native_unit_of_measurement = "Ft/kWh"
     _attr_state_class = SensorStateClass.MEASUREMENT
     stat = "avg"
+
+    @property
+    def available(self) -> bool:
+        data = self.coordinator.data
+        return bool(super().available and data and data.forecast)
 
     @property
     def native_value(self):

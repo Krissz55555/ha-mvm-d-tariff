@@ -1,7 +1,7 @@
 {
   "domain": "mvm_d_tariff",
   "name": "MVM D Tariff",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "config_flow": true,
   "single_config_entry": true,
   "documentation": "https://github.com/Krissz55555/ha-mvm-d-tariff",

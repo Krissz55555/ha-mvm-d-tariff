@@ -49,9 +49,9 @@ class ForecastPoint:
 
 @dataclass(frozen=True, slots=True)
 class TariffData:
-    price_huf_kwh_gross: float
-    hupx_eur_mwh: float
-    hupx_huf_kwh_net: float
+    price_huf_kwh_gross: float | None
+    hupx_eur_mwh: float | None
+    hupx_huf_kwh_net: float | None
     eur_huf: float
     merchant_fee_huf_kwh_net: float
     transmission_fee_huf_kwh_net: float
@@ -64,6 +64,8 @@ class TariffData:
     forecast_date: str | None
     forecast_generated_at: str | None
     forecast_is_fallback: bool
+    forecast_current_price_huf_kwh_gross: float | None
+    current_price_source: str | None
     tomorrow_forecast: tuple[ForecastPoint, ...]
     tomorrow_forecast_date: str | None
     tomorrow_forecast_generated_at: str | None
@@ -292,6 +294,43 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
             return (), None, None
         return tuple(points), target_date, cached.get("generated_at")
 
+
+    def _current_forecast_point(
+        self,
+        forecast: tuple[ForecastPoint, ...],
+    ) -> tuple[ForecastPoint, str | None] | None:
+        """Return the active point from today's DAM curve."""
+        now_utc = dt_util.utcnow()
+        timed_points: list[tuple[datetime, ForecastPoint]] = []
+
+        for point in forecast:
+            parsed = dt_util.parse_datetime(point.timestamp)
+            if parsed is None or parsed.tzinfo is None:
+                continue
+            timed_points.append((dt_util.as_utc(parsed), point))
+
+        if not timed_points:
+            return None
+
+        timed_points.sort(key=lambda item: item[0])
+        selected_index: int | None = None
+        for index, (timestamp, _) in enumerate(timed_points):
+            if timestamp <= now_utc:
+                selected_index = index
+            else:
+                break
+
+        if selected_index is None:
+            return None
+
+        selected = timed_points[selected_index][1]
+        valid_until = (
+            timed_points[selected_index + 1][1].timestamp
+            if selected_index + 1 < len(timed_points)
+            else None
+        )
+        return selected, valid_until
+
     def _should_try_tomorrow(self, tomorrow: date) -> bool:
         # Already cached: no need to repeatedly download a fixed DAM curve.
         days = self._stored_forecast.get("days") or {}
@@ -308,20 +347,23 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
         return now - self._last_tomorrow_attempt >= NEXT_DAY_RETRY_INTERVAL
 
     async def _async_update_data(self) -> TariffData:
-        # Current interval and official exchange rate are always refreshed on
-        # startup and then by the normal coordinator interval.
-        hupx_eur_mwh, interval_start, valid_until, generated_at = await self._async_fetch_hupx()
-        eur_huf = await self._async_fetch_mnb_eur_huf()
+        # MNB is shared by all HUF calculations. If it is temporarily unavailable,
+        # keep using the last successful rate so a short MNB outage does not make
+        # every market-price entity unavailable.
+        try:
+            eur_huf = await self._async_fetch_mnb_eur_huf()
+        except UpdateFailed as err:
+            if self.data is None:
+                raise
+            eur_huf = self.data.eur_huf
+            _LOGGER.warning("Using last known MNB EUR/HUF rate: %s", err)
 
         merchant, transmission, distribution, vat_pct = self._fees()
-        hupx_huf_float, gross_float = self.gross_d_price(hupx_eur_mwh, eur_huf)
-
         today = dt_util.now().date()
         tomorrow = today + timedelta(days=1)
 
-        # TODAY: on startup/reload always download a fresh current-day DAM
-        # curve. During normal 5-minute polling the already cached curve is
-        # sufficient because day-ahead prices are fixed for that delivery day.
+        # TODAY forecast is handled independently from the current-price endpoint.
+        # A failure here must not make the current-price entities unavailable.
         forecast_is_fallback = False
         forecast: tuple[ForecastPoint, ...]
         forecast_date: str | None
@@ -342,9 +384,50 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
                     _LOGGER.warning("D tariff forecast for today unavailable: %s", err)
                     forecast_is_fallback = False
 
-        # TOMORROW: if already cached, expose it immediately. If it is not yet
-        # published, retry periodically after noon. On startup after noon this
-        # attempt happens immediately, so no waiting for the next long cycle.
+        active_forecast = self._current_forecast_point(forecast)
+        forecast_current_price = (
+            active_forecast[0].d_price_huf_kwh_gross if active_forecast else None
+        )
+
+        # CURRENT price is independent. Prefer /price_current; if it fails, use the
+        # active interval from today's DAM curve. If both are unavailable, only the
+        # current-price-dependent entities become unavailable; the coordinator and
+        # forecast entities stay alive.
+        hupx_eur_mwh: float | None = None
+        hupx_huf_float: float | None = None
+        gross_float: float | None = None
+        interval_start: str | None = None
+        valid_until: str | None = None
+        generated_at: str | None = None
+        current_price_source: str | None = None
+
+        try:
+            hupx_eur_mwh, interval_start, valid_until, generated_at = await self._async_fetch_hupx()
+            hupx_huf_float, gross_float = self.gross_d_price(hupx_eur_mwh, eur_huf)
+            current_price_source = "price_current"
+        except UpdateFailed as err:
+            if active_forecast is not None:
+                point, fallback_valid_until = active_forecast
+                hupx_eur_mwh = point.hupx_eur_mwh
+                hupx_huf_float = point.hupx_huf_kwh_net
+                gross_float = point.d_price_huf_kwh_gross
+                interval_start = point.timestamp
+                valid_until = fallback_valid_until
+                generated_at = forecast_generated_at
+                current_price_source = "today_dam_fallback"
+                _LOGGER.warning(
+                    "Current HUPX endpoint unavailable; using today's DAM interval %s: %s",
+                    interval_start,
+                    err,
+                )
+            else:
+                _LOGGER.warning(
+                    "Current HUPX endpoint unavailable and no DAM fallback exists; "
+                    "only current-price entities will be unavailable: %s",
+                    err,
+                )
+
+        # TOMORROW stays independent as well. Failure before publication is expected.
         tomorrow_is_fallback = False
         tomorrow_forecast, tomorrow_date, tomorrow_generated_at = self._cached_forecast_for_date(tomorrow, eur_huf)
         if self._should_try_tomorrow(tomorrow):
@@ -354,7 +437,6 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
                     tomorrow, eur_huf
                 )
             except (TypeError, ValueError, KeyError) as err:
-                # This is expected before the next-day DAM publication.
                 _LOGGER.debug("Next-day DAM curve not available yet: %s", err)
                 tomorrow_forecast, tomorrow_date, tomorrow_generated_at = self._cached_forecast_for_date(
                     tomorrow, eur_huf
@@ -379,8 +461,11 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
             forecast_date=forecast_date,
             forecast_generated_at=forecast_generated_at,
             forecast_is_fallback=forecast_is_fallback,
+            forecast_current_price_huf_kwh_gross=forecast_current_price,
+            current_price_source=current_price_source,
             tomorrow_forecast=tomorrow_forecast,
             tomorrow_forecast_date=tomorrow_date,
             tomorrow_forecast_generated_at=tomorrow_generated_at,
             tomorrow_forecast_is_fallback=tomorrow_is_fallback,
         )
+

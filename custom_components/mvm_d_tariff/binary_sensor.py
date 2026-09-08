@@ -36,9 +36,14 @@ class MvmDCheapPeriodBinarySensor(CoordinatorEntity[MvmDTariffCoordinator], Bina
         return float(self.entry.options.get(CONF_CHEAP_THRESHOLD, DEFAULT_CHEAP_THRESHOLD_HUF_KWH))
 
     @property
+    def available(self) -> bool:
+        data = self.coordinator.data
+        return bool(super().available and data and data.price_huf_kwh_gross is not None)
+
+    @property
     def is_on(self) -> bool | None:
         data = self.coordinator.data
-        if data is None:
+        if data is None or data.price_huf_kwh_gross is None:
             return None
         return data.price_huf_kwh_gross < self.threshold
 
