@@ -6,6 +6,7 @@ DOMAIN = "mvm_d_tariff"
 
 ENERGY_CHARTS_CURRENT_URL = "https://api.energy-charts.info/v2/price_current?bzn=HU"
 ENERGY_CHARTS_PRICE_URL = "https://api.energy-charts.info/v2/price"
+ENERGY_CHARTS_NEXT_DAY_URL = "https://api.energy-charts.info/v2/price_next_day?bzn=HU"
 MNB_EXCHANGE_RATE_URL = "https://www.mnb.hu/en/arfolyamok"
 
 DEFAULT_MERCHANT_FEE_HUF_KWH = 13.70

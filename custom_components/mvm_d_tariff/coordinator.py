@@ -25,6 +25,7 @@ from .const import (
     DEFAULT_TRANSMISSION_FEE_HUF_KWH,
     DEFAULT_VAT_PERCENT,
     ENERGY_CHARTS_CURRENT_URL,
+    ENERGY_CHARTS_NEXT_DAY_URL,
     ENERGY_CHARTS_PRICE_URL,
     MNB_EXCHANGE_RATE_URL,
     UPDATE_INTERVAL,
@@ -32,11 +33,9 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# The next-day DAM curve is normally published during the previous day.
-# Before noon it is usually pointless to continuously retry. After this time,
-# the coordinator checks periodically until a usable next-day curve appears.
 NEXT_DAY_FIRST_CHECK_HOUR = 12
 NEXT_DAY_RETRY_INTERVAL = timedelta(minutes=15)
+TODAY_RETRY_INTERVAL = timedelta(minutes=5)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +51,7 @@ class TariffData:
     price_huf_kwh_gross: float | None
     hupx_eur_mwh: float | None
     hupx_huf_kwh_net: float | None
-    eur_huf: float
+    eur_huf: float | None
     merchant_fee_huf_kwh_net: float
     transmission_fee_huf_kwh_net: float
     distribution_fee_huf_kwh_net: float
@@ -66,10 +65,13 @@ class TariffData:
     forecast_is_fallback: bool
     forecast_current_price_huf_kwh_gross: float | None
     current_price_source: str | None
+    fx_source: str | None
+    forecast_source: str | None
     tomorrow_forecast: tuple[ForecastPoint, ...]
     tomorrow_forecast_date: str | None
     tomorrow_forecast_generated_at: str | None
     tomorrow_forecast_is_fallback: bool
+    tomorrow_forecast_source: str | None
 
 
 def _money(value: Decimal) -> Decimal:
@@ -118,6 +120,14 @@ def _parse_mnb_eur_huf_html(html: str) -> float:
 
 
 class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
+    """Coordinator with independent external-source channels.
+
+    The three external channels (MNB FX, current HUPX, daily DAM) are isolated:
+    a failure in one channel never raises the whole coordinator update. Each
+    channel has its own persisted fallback state. This keeps unrelated entities
+    alive during partial upstream outages.
+    """
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
             hass,
@@ -128,37 +138,47 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
         )
         self.entry = entry
         self.session = async_get_clientsession(hass)
-        # Keep store version 1 so existing v0.2 test installations can be read.
-        # The payload is migrated in memory from the old single-day shape.
-        self._forecast_store: Store[dict] = Store(hass, 1, f"{entry.entry_id}_mvm_d_tariff_forecast")
+
+        # Existing forecast store is preserved for upgrade compatibility.
+        self._forecast_store: Store[dict] = Store(
+            hass, 1, f"{entry.entry_id}_mvm_d_tariff_forecast"
+        )
         self._stored_forecast: dict = {"days": {}}
-        self._first_update = True
+
+        # New independent source cache. It intentionally has a separate Store
+        # key so forecast history and other v0.2.x persisted state are untouched.
+        self._source_store: Store[dict] = Store(
+            hass, 1, f"{entry.entry_id}_mvm_d_tariff_sources"
+        )
+        self._stored_sources: dict = {}
+
         self._last_tomorrow_attempt: datetime | None = None
+        self._last_today_attempt: datetime | None = None
 
     async def async_load_cached_forecast(self) -> None:
         stored = await self._forecast_store.async_load()
-        if not isinstance(stored, dict):
-            self._stored_forecast = {"days": {}}
-            return
-
-        if isinstance(stored.get("days"), dict):
+        if isinstance(stored, dict) and isinstance(stored.get("days"), dict):
             self._stored_forecast = stored
-            return
-
-        # Backward-compatible migration from the dev single-day cache format.
-        old_date = stored.get("date")
-        old_points = stored.get("points")
-        if old_date and isinstance(old_points, list):
-            self._stored_forecast = {
-                "days": {
-                    str(old_date): {
-                        "generated_at": stored.get("generated_at"),
-                        "points": old_points,
+        elif isinstance(stored, dict):
+            # Migration from the older single-day cache shape.
+            old_date = stored.get("date")
+            old_points = stored.get("points")
+            if old_date and isinstance(old_points, list):
+                self._stored_forecast = {
+                    "days": {
+                        str(old_date): {
+                            "generated_at": stored.get("generated_at"),
+                            "points": old_points,
+                        }
                     }
                 }
-            }
+            else:
+                self._stored_forecast = {"days": {}}
         else:
             self._stored_forecast = {"days": {}}
+
+        source_state = await self._source_store.async_load()
+        self._stored_sources = source_state if isinstance(source_state, dict) else {}
 
     def _fees(self) -> tuple[Decimal, Decimal, Decimal, Decimal]:
         merchant = Decimal(str(self.entry.options.get(CONF_MERCHANT_FEE, DEFAULT_MERCHANT_FEE_HUF_KWH)))
@@ -174,6 +194,9 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
         gross = net * (Decimal("1") + vat_pct / Decimal("100"))
         return float(_money(hupx_huf)), float(_money(gross))
 
+    # ---------------------------------------------------------------------
+    # Channel A: current HUPX endpoint
+    # ---------------------------------------------------------------------
     async def _async_fetch_hupx(self) -> tuple[float, str | None, str | None, str | None]:
         try:
             async with self.session.get(ENERGY_CHARTS_CURRENT_URL, timeout=20) as response:
@@ -186,6 +209,28 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
         except (TypeError, ValueError, KeyError) as err:
             raise UpdateFailed(f"Unexpected Energy-Charts response: {err}") from err
 
+    async def _async_save_current_source(
+        self,
+        price_eur_mwh: float,
+        interval_start: str | None,
+        valid_until: str | None,
+        generated_at: str | None,
+    ) -> None:
+        self._stored_sources["current"] = {
+            "hupx_eur_mwh": price_eur_mwh,
+            "interval_start": interval_start,
+            "valid_until": valid_until,
+            "generated_at": generated_at,
+            "saved_at": dt_util.utcnow().isoformat(),
+        }
+        try:
+            await self._source_store.async_save(self._stored_sources)
+        except Exception as err:  # persistence failure must not invalidate live API data
+            _LOGGER.warning("Could not persist current-price cache: %s", err)
+
+    # ---------------------------------------------------------------------
+    # Channel B: MNB EUR/HUF
+    # ---------------------------------------------------------------------
     async def _async_fetch_mnb_eur_huf(self) -> float:
         try:
             async with self.session.get(MNB_EXCHANGE_RATE_URL, timeout=20) as response:
@@ -198,6 +243,31 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
         except ValueError as err:
             raise UpdateFailed(f"Unexpected MNB response: {err}") from err
 
+    async def _async_get_fx(self) -> tuple[float | None, str | None]:
+        try:
+            value = await self._async_fetch_mnb_eur_huf()
+            self._stored_sources["fx"] = {
+                "eur_huf": value,
+                "saved_at": dt_util.utcnow().isoformat(),
+            }
+            try:
+                await self._source_store.async_save(self._stored_sources)
+            except Exception as save_err:  # live FX remains usable even if Store has a problem
+                _LOGGER.warning("Could not persist MNB FX cache: %s", save_err)
+            return value, "mnb_live"
+        except UpdateFailed as err:
+            cached = self._stored_sources.get("fx") or {}
+            try:
+                value = float(cached["eur_huf"])
+            except (KeyError, TypeError, ValueError):
+                _LOGGER.warning("MNB EUR/HUF unavailable and no cached FX exists: %s", err)
+                return None, None
+            _LOGGER.warning("MNB EUR/HUF unavailable; using persisted FX cache: %s", err)
+            return value, "mnb_cache"
+
+    # ---------------------------------------------------------------------
+    # Channel C: daily DAM curves + independent persistent cache
+    # ---------------------------------------------------------------------
     async def _async_save_forecast_day(
         self,
         target_date: str,
@@ -207,9 +277,7 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
         days = self._stored_forecast.setdefault("days", {})
         days[target_date] = {
             "generated_at": generated_at,
-            # Raw HUPX EUR/MWh is authoritative. HUF prices are retained for
-            # diagnostics, but are recalculated from the current MNB rate when
-            # a cached curve is read.
+            "saved_at": dt_util.utcnow().isoformat(),
             "points": [
                 {
                     "timestamp": p.timestamp,
@@ -221,29 +289,24 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
             ],
         }
 
-        # Keep only a small rolling window: yesterday, today and next days.
         today = dt_util.now().date()
         keep_from = (today - timedelta(days=1)).isoformat()
+        keep_until = (today + timedelta(days=2)).isoformat()
         for cached_date in list(days):
-            if cached_date < keep_from:
+            if cached_date < keep_from or cached_date > keep_until:
                 days.pop(cached_date, None)
 
-        await self._forecast_store.async_save(self._stored_forecast)
+        try:
+            await self._forecast_store.async_save(self._stored_forecast)
+        except Exception as err:  # fetched DAM remains usable even if persistence fails
+            _LOGGER.warning("Could not persist DAM forecast cache: %s", err)
 
-    async def _async_fetch_day_forecast(
+    def _parse_forecast_payload(
         self,
-        target: date,
+        payload: dict,
+        target_date: str,
         eur_huf: float,
     ) -> tuple[tuple[ForecastPoint, ...], str, str | None]:
-        target_date = target.isoformat()
-        url = f"{ENERGY_CHARTS_PRICE_URL}?bzn=HU&start={target_date}&end={target_date}"
-        try:
-            async with self.session.get(url, timeout=20) as response:
-                response.raise_for_status()
-                payload = await response.json(content_type=None)
-        except (ClientError, TimeoutError, ValueError) as err:
-            raise ValueError(f"Energy-Charts daily curve query failed for {target_date}: {err}") from err
-
         data = payload.get("data")
         if not isinstance(data, list) or not data:
             raise ValueError(f"Energy-Charts daily curve contains no data for {target_date}")
@@ -261,10 +324,51 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
         if not points:
             raise ValueError(f"Energy-Charts daily curve has no usable points for {target_date}")
 
-        generated_at = payload.get("generated_at")
-        result = tuple(points)
-        await self._async_save_forecast_day(target_date, generated_at, result)
-        return result, target_date, generated_at
+        return tuple(points), target_date, payload.get("generated_at")
+
+    async def _async_fetch_day_forecast(
+        self,
+        target: date,
+        eur_huf: float,
+    ) -> tuple[tuple[ForecastPoint, ...], str, str | None]:
+        target_date = target.isoformat()
+        # Daily format: a single start date already means the complete local day.
+        # Avoid redundant end=... because the v2 API explicitly documents this.
+        url = f"{ENERGY_CHARTS_PRICE_URL}?bzn=HU&start={target_date}"
+        try:
+            async with self.session.get(url, timeout=20) as response:
+                response.raise_for_status()
+                payload = await response.json(content_type=None)
+        except (ClientError, TimeoutError, ValueError) as err:
+            raise ValueError(f"Energy-Charts daily curve query failed for {target_date}: {err}") from err
+
+        result, result_date, generated_at = self._parse_forecast_payload(payload, target_date, eur_huf)
+        await self._async_save_forecast_day(result_date, generated_at, result)
+        return result, result_date, generated_at
+
+    async def _async_fetch_next_day_forecast(
+        self,
+        target: date,
+        eur_huf: float,
+    ) -> tuple[tuple[ForecastPoint, ...], str, str | None]:
+        target_date = target.isoformat()
+        try:
+            async with self.session.get(ENERGY_CHARTS_NEXT_DAY_URL, timeout=20) as response:
+                response.raise_for_status()
+                payload = await response.json(content_type=None)
+        except (ClientError, TimeoutError, ValueError) as err:
+            raise ValueError(f"Energy-Charts next-day curve query failed for {target_date}: {err}") from err
+
+        attributes = payload.get("attributes") or {}
+        delivery_date = attributes.get("delivery_date")
+        if delivery_date and str(delivery_date) != target_date:
+            raise ValueError(
+                f"Energy-Charts next-day delivery date mismatch: expected {target_date}, got {delivery_date}"
+            )
+
+        result, result_date, generated_at = self._parse_forecast_payload(payload, target_date, eur_huf)
+        await self._async_save_forecast_day(result_date, generated_at, result)
+        return result, result_date, generated_at
 
     def _cached_forecast_for_date(
         self,
@@ -294,12 +398,10 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
             return (), None, None
         return tuple(points), target_date, cached.get("generated_at")
 
-
     def _current_forecast_point(
         self,
         forecast: tuple[ForecastPoint, ...],
     ) -> tuple[ForecastPoint, str | None] | None:
-        """Return the active point from today's DAM curve."""
         now_utc = dt_util.utcnow()
         timed_points: list[tuple[datetime, ForecastPoint]] = []
 
@@ -332,67 +434,130 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
         return selected, valid_until
 
     def _should_try_tomorrow(self, tomorrow: date) -> bool:
-        # Already cached: no need to repeatedly download a fixed DAM curve.
         days = self._stored_forecast.get("days") or {}
         if tomorrow.isoformat() in days and (days[tomorrow.isoformat()].get("points") or []):
             return False
 
         now = dt_util.now()
-        # On the first coordinator update (startup/reload), try immediately if
-        # we are already in the likely publication window.
         if now.hour < NEXT_DAY_FIRST_CHECK_HOUR:
             return False
         if self._last_tomorrow_attempt is None:
             return True
         return now - self._last_tomorrow_attempt >= NEXT_DAY_RETRY_INTERVAL
 
-    async def _async_update_data(self) -> TariffData:
-        # MNB is shared by all HUF calculations. If it is temporarily unavailable,
-        # keep using the last successful rate so a short MNB outage does not make
-        # every market-price entity unavailable.
-        try:
-            eur_huf = await self._async_fetch_mnb_eur_huf()
-        except UpdateFailed as err:
-            if self.data is None:
-                raise
-            eur_huf = self.data.eur_huf
-            _LOGGER.warning("Using last known MNB EUR/HUF rate: %s", err)
+    async def _async_get_today_forecast(
+        self,
+        today: date,
+        eur_huf: float | None,
+    ) -> tuple[tuple[ForecastPoint, ...], str | None, str | None, bool, str | None]:
+        if eur_huf is None:
+            return (), None, None, False, None
 
+        # Cache-first at startup/midnight: tomorrow's curve is pre-fetched the
+        # previous afternoon, so an overnight API outage cannot wipe the day.
+        cached, cached_date, cached_generated = self._cached_forecast_for_date(today, eur_huf)
+        if cached:
+            return cached, cached_date, cached_generated, True, "today_dam_cache"
+
+        # No cache exists for the new calendar day. Retry every five minutes
+        # until the new DAM curve appears. Manual/extra coordinator refreshes
+        # inside that window do not hammer the API. A failed attempt never
+        # deletes yesterday/tomorrow cache entries.
+        now = dt_util.now()
+        if (
+            self._last_today_attempt is not None
+            and now - self._last_today_attempt < TODAY_RETRY_INTERVAL
+        ):
+            return (), None, None, False, None
+        self._last_today_attempt = now
+        try:
+            forecast, forecast_date, generated_at = await self._async_fetch_day_forecast(today, eur_huf)
+            return forecast, forecast_date, generated_at, False, "today_dam_live"
+        except (TypeError, ValueError, KeyError) as err:
+            _LOGGER.warning(
+                "Today DAM unavailable; retrying automatically on the next 5-minute update. "
+                "Persisted caches are kept intact: %s",
+                err,
+            )
+            return (), None, None, False, None
+
+    async def _async_get_tomorrow_forecast(
+        self,
+        tomorrow: date,
+        eur_huf: float | None,
+    ) -> tuple[tuple[ForecastPoint, ...], str | None, str | None, bool, str | None]:
+        if eur_huf is None:
+            return (), None, None, False, None
+
+        cached, cached_date, cached_generated = self._cached_forecast_for_date(tomorrow, eur_huf)
+        if cached:
+            return cached, cached_date, cached_generated, True, "tomorrow_dam_cache"
+
+        if not self._should_try_tomorrow(tomorrow):
+            return (), None, None, False, None
+
+        self._last_tomorrow_attempt = dt_util.now()
+        try:
+            forecast, forecast_date, generated_at = await self._async_fetch_next_day_forecast(tomorrow, eur_huf)
+            return forecast, forecast_date, generated_at, False, "price_next_day"
+        except (TypeError, ValueError, KeyError) as next_day_err:
+            # Some Energy-Charts publication windows can make price_next_day
+            # temporarily unavailable. Try the generic dated DAM endpoint too
+            # before waiting for the next 15-minute prefetch attempt.
+            try:
+                forecast, forecast_date, generated_at = await self._async_fetch_day_forecast(tomorrow, eur_huf)
+                return forecast, forecast_date, generated_at, False, "tomorrow_dam_live"
+            except (TypeError, ValueError, KeyError) as dated_err:
+                _LOGGER.debug(
+                    "Next-day DAM not available yet; retrying in 15 minutes. "
+                    "price_next_day=%s; dated_DAM=%s",
+                    next_day_err,
+                    dated_err,
+                )
+                return (), None, None, False, None
+
+    async def _async_update_data(self) -> TariffData:
+        """Refresh all channels independently and always return partial data."""
         merchant, transmission, distribution, vat_pct = self._fees()
         today = dt_util.now().date()
         tomorrow = today + timedelta(days=1)
 
-        # TODAY forecast is handled independently from the current-price endpoint.
-        # A failure here must not make the current-price entities unavailable.
-        forecast_is_fallback = False
-        forecast: tuple[ForecastPoint, ...]
-        forecast_date: str | None
-        forecast_generated_at: str | None
-        if self._first_update:
-            try:
-                forecast, forecast_date, forecast_generated_at = await self._async_fetch_day_forecast(today, eur_huf)
-            except (TypeError, ValueError, KeyError) as err:
-                _LOGGER.warning("Using cached D tariff forecast for today: %s", err)
-                forecast, forecast_date, forecast_generated_at = self._cached_forecast_for_date(today, eur_huf)
-                forecast_is_fallback = bool(forecast)
-        else:
-            forecast, forecast_date, forecast_generated_at = self._cached_forecast_for_date(today, eur_huf)
-            if not forecast:
-                try:
-                    forecast, forecast_date, forecast_generated_at = await self._async_fetch_day_forecast(today, eur_huf)
-                except (TypeError, ValueError, KeyError) as err:
-                    _LOGGER.warning("D tariff forecast for today unavailable: %s", err)
-                    forecast_is_fallback = False
+        # B: FX channel. Unexpected failures are contained here so they cannot
+        # mark the DAM/current/cost channels unavailable.
+        try:
+            eur_huf, fx_source = await self._async_get_fx()
+        except Exception as err:
+            _LOGGER.exception("Independent MNB channel failed unexpectedly: %s", err)
+            eur_huf, fx_source = None, None
 
-        active_forecast = self._current_forecast_point(forecast)
-        forecast_current_price = (
-            active_forecast[0].d_price_huf_kwh_gross if active_forecast else None
-        )
+        # C: DAM channel. A today-DAM failure is isolated from current price and
+        # from the tomorrow-prefetch channel.
+        try:
+            forecast, forecast_date, forecast_generated_at, forecast_is_fallback, forecast_source = (
+                await self._async_get_today_forecast(today, eur_huf)
+            )
+        except Exception as err:
+            _LOGGER.exception("Independent today-DAM channel failed unexpectedly: %s", err)
+            forecast, forecast_date, forecast_generated_at = (), None, None
+            forecast_is_fallback, forecast_source = False, None
 
-        # CURRENT price is independent. Prefer /price_current; if it fails, use the
-        # active interval from today's DAM curve. If both are unavailable, only the
-        # current-price-dependent entities become unavailable; the coordinator and
-        # forecast entities stay alive.
+        try:
+            active_forecast = self._current_forecast_point(forecast)
+        except Exception as err:
+            _LOGGER.exception("Could not resolve active DAM interval: %s", err)
+            active_forecast = None
+        forecast_current_price = active_forecast[0].d_price_huf_kwh_gross if active_forecast else None
+
+        try:
+            tomorrow_forecast, tomorrow_date, tomorrow_generated_at, tomorrow_is_fallback, tomorrow_source = (
+                await self._async_get_tomorrow_forecast(tomorrow, eur_huf)
+            )
+        except Exception as err:
+            _LOGGER.exception("Independent tomorrow-DAM channel failed unexpectedly: %s", err)
+            tomorrow_forecast, tomorrow_date, tomorrow_generated_at = (), None, None
+            tomorrow_is_fallback, tomorrow_source = False, None
+
+        # A: current-price channel. Its failure cannot change forecast availability.
         hupx_eur_mwh: float | None = None
         hupx_huf_float: float | None = None
         gross_float: float | None = None
@@ -402,10 +567,13 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
         current_price_source: str | None = None
 
         try:
-            hupx_eur_mwh, interval_start, valid_until, generated_at = await self._async_fetch_hupx()
-            hupx_huf_float, gross_float = self.gross_d_price(hupx_eur_mwh, eur_huf)
-            current_price_source = "price_current"
-        except UpdateFailed as err:
+            live_eur, interval_start, valid_until, generated_at = await self._async_fetch_hupx()
+            hupx_eur_mwh = live_eur
+            if eur_huf is not None:
+                hupx_huf_float, gross_float = self.gross_d_price(live_eur, eur_huf)
+                current_price_source = "price_current"
+                await self._async_save_current_source(live_eur, interval_start, valid_until, generated_at)
+        except Exception as err:
             if active_forecast is not None:
                 point, fallback_valid_until = active_forecast
                 hupx_eur_mwh = point.hupx_eur_mwh
@@ -416,34 +584,16 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
                 generated_at = forecast_generated_at
                 current_price_source = "today_dam_fallback"
                 _LOGGER.warning(
-                    "Current HUPX endpoint unavailable; using today's DAM interval %s: %s",
+                    "Current HUPX unavailable; using independent today-DAM channel (%s): %s",
                     interval_start,
                     err,
                 )
             else:
                 _LOGGER.warning(
-                    "Current HUPX endpoint unavailable and no DAM fallback exists; "
-                    "only current-price entities will be unavailable: %s",
+                    "Current HUPX unavailable; DAM channel also has no current-day point. "
+                    "Only current-price-dependent entities are unavailable: %s",
                     err,
                 )
-
-        # TOMORROW stays independent as well. Failure before publication is expected.
-        tomorrow_is_fallback = False
-        tomorrow_forecast, tomorrow_date, tomorrow_generated_at = self._cached_forecast_for_date(tomorrow, eur_huf)
-        if self._should_try_tomorrow(tomorrow):
-            self._last_tomorrow_attempt = dt_util.now()
-            try:
-                tomorrow_forecast, tomorrow_date, tomorrow_generated_at = await self._async_fetch_day_forecast(
-                    tomorrow, eur_huf
-                )
-            except (TypeError, ValueError, KeyError) as err:
-                _LOGGER.debug("Next-day DAM curve not available yet: %s", err)
-                tomorrow_forecast, tomorrow_date, tomorrow_generated_at = self._cached_forecast_for_date(
-                    tomorrow, eur_huf
-                )
-                tomorrow_is_fallback = bool(tomorrow_forecast)
-
-        self._first_update = False
 
         return TariffData(
             price_huf_kwh_gross=gross_float,
@@ -463,9 +613,11 @@ class MvmDTariffCoordinator(DataUpdateCoordinator[TariffData]):
             forecast_is_fallback=forecast_is_fallback,
             forecast_current_price_huf_kwh_gross=forecast_current_price,
             current_price_source=current_price_source,
+            fx_source=fx_source,
+            forecast_source=forecast_source,
             tomorrow_forecast=tomorrow_forecast,
             tomorrow_forecast_date=tomorrow_date,
             tomorrow_forecast_generated_at=tomorrow_generated_at,
             tomorrow_forecast_is_fallback=tomorrow_is_fallback,
+            tomorrow_forecast_source=tomorrow_source,
         )
-

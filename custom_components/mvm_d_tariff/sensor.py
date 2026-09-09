@@ -88,6 +88,8 @@ class MvmDCurrentPriceSensor(BaseMvmSensor):
             "valid_until": data.valid_until,
             "source_generated_at": data.source_generated_at,
             "current_price_source": data.current_price_source,
+            "fx_source": data.fx_source,
+            "forecast_source": data.forecast_source,
             "scope": "D tarifa – kedvezményes sávhatár feletti becsült bruttó változó költség",
         }
 
@@ -121,6 +123,8 @@ class MvmDHupxRawPriceSensor(BaseMvmSensor):
             "valid_until": data.valid_until,
             "source_generated_at": data.source_generated_at,
             "current_price_source": data.current_price_source,
+            "fx_source": data.fx_source,
+            "forecast_source": data.forecast_source,
             "scope": "Nyers HUPX ár Ft/kWh-ra átszámítva; MVM díjak, RHD és ÁFA nélkül",
         }
 
@@ -158,6 +162,8 @@ class MvmDTodayForecastSensor(BaseMvmSensor):
             "source": "day-ahead (DAM)",
             "source_generated_at": data.forecast_generated_at,
             "fallback": data.forecast_is_fallback,
+            "forecast_source": data.forecast_source,
+            "fx_source": data.fx_source,
             "points": len(data.forecast),
             "forecast": [
                 {
@@ -172,6 +178,7 @@ class MvmDTodayForecastSensor(BaseMvmSensor):
             "tomorrow_forecast_date": data.tomorrow_forecast_date,
             "tomorrow_source_generated_at": data.tomorrow_forecast_generated_at,
             "tomorrow_fallback": data.tomorrow_forecast_is_fallback,
+            "tomorrow_forecast_source": data.tomorrow_forecast_source,
             "tomorrow_points": len(data.tomorrow_forecast),
             "tomorrow_min_huf_kwh": round(min(tomorrow_values), 2) if tomorrow_values else None,
             "tomorrow_max_huf_kwh": round(max(tomorrow_values), 2) if tomorrow_values else None,

@@ -28,6 +28,7 @@ class CostState:
     energy_kwh: float = 0.0
     d_cost_huf: float = 0.0
     a1_cost_huf: float = 0.0
+    pending_d_energy_kwh: float = 0.0
 
 
 class MvmDCostTracker:
@@ -124,16 +125,24 @@ class MvmDCostTracker:
             self.state.last_energy_kwh = current_kwh
             return
 
-        data = self.coordinator.data
-        if data is None or data.price_huf_kwh_gross is None:
-            # Keep the old baseline; the next valid reading will include this delta.
-            return
-
+        # Consumption and A1 accounting are independent from the external D-price
+        # APIs. They must continue even while current HUPX/DAM is unavailable.
         a1_price = float(self.entry.options.get(CONF_A1_PRICE, DEFAULT_A1_PRICE_HUF_KWH))
         self.state.energy_kwh += delta
-        self.state.d_cost_huf += delta * data.price_huf_kwh_gross
         self.state.a1_cost_huf += delta * a1_price
         self.state.last_energy_kwh = current_kwh
+
+        data = self.coordinator.data
+        if data is None or data.price_huf_kwh_gross is None:
+            # Preserve unpriced consumption separately. When a valid D price
+            # returns it is folded into the next estimate instead of blocking
+            # the consumption and A1 sensors.
+            self.state.pending_d_energy_kwh += delta
+        else:
+            d_energy = delta + self.state.pending_d_energy_kwh
+            self.state.d_cost_huf += d_energy * data.price_huf_kwh_gross
+            self.state.pending_d_energy_kwh = 0.0
+
         await self._save()
         self._notify()
 
