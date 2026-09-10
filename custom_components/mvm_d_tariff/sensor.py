@@ -132,7 +132,10 @@ class MvmDHupxRawPriceSensor(BaseMvmSensor):
 class MvmDTodayForecastSensor(BaseMvmSensor):
     _attr_name = "D tarifa Mai előrejelzett ár"
     _attr_native_unit_of_measurement = "Ft/kWh"
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    # This entity primarily carries the daily forecast for the custom card.
+    # Do not create long-term statistics for it: older releases exposed it
+    # without a statistics unit, which causes recorder unit conflicts.
+    _attr_state_class = None
 
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "today_forecast")
@@ -165,12 +168,13 @@ class MvmDTodayForecastSensor(BaseMvmSensor):
             "forecast_source": data.forecast_source,
             "fx_source": data.fx_source,
             "points": len(data.forecast),
+            # Keep the card payload deliberately compact.  Home Assistant
+            # limits state attributes to 16 KiB; the card only needs the
+            # timestamp and calculated D-tariff price for each interval.
             "forecast": [
                 {
                     "start": p.timestamp,
                     "price_huf_kwh": p.d_price_huf_kwh_gross,
-                    "hupx_huf_kwh": p.hupx_huf_kwh_net,
-                    "hupx_eur_mwh": p.hupx_eur_mwh,
                 }
                 for p in data.forecast
             ],
@@ -183,15 +187,9 @@ class MvmDTodayForecastSensor(BaseMvmSensor):
             "tomorrow_min_huf_kwh": round(min(tomorrow_values), 2) if tomorrow_values else None,
             "tomorrow_max_huf_kwh": round(max(tomorrow_values), 2) if tomorrow_values else None,
             "tomorrow_avg_huf_kwh": round(mean(tomorrow_values), 2) if tomorrow_values else None,
-            "tomorrow_forecast": [
-                {
-                    "start": p.timestamp,
-                    "price_huf_kwh": p.d_price_huf_kwh_gross,
-                    "hupx_huf_kwh": p.hupx_huf_kwh_net,
-                    "hupx_eur_mwh": p.hupx_eur_mwh,
-                }
-                for p in data.tomorrow_forecast
-            ],
+            # Do not duplicate the complete tomorrow curve in entity
+            # attributes. It remains in the coordinator/cache and only the
+            # summary metadata is exposed here.
         }
 
 
