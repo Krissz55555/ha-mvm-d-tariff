@@ -16,7 +16,7 @@ Az integráció célja, hogy a D tarifához kapcsolódó aktuális és day-ahead
 - Havi fogyasztás és becsült **D tarifa költség**
 - Összehasonlítás az **A1 tarifával**
 
-A teljes napi 96 pontos előrejelzés egyetlen szenzor strukturált adataként érhető el, ezért az integráció nem hoz létre 96 külön entitást.
+A teljes napi 96 pontos előrejelzés egyetlen szenzor tömörített strukturált adataként érhető el, ezért az integráció nem hoz létre 96 külön entitást.
 
 ## 📊 Ár-előrejelzés
 
@@ -122,7 +122,7 @@ A konfiguráció után a szükséges entitások automatikusan létrejönnek.
 
 ## 📈 Napi ár-előrejelzés kártya beállítása
 
-A v0.2.1 saját Home Assistant kártyát tartalmaz. A kártyához **nem szükséges ApexCharts vagy más külön HACS frontend-kiegészítő**.
+A v0.2.2 saját Home Assistant kártyát tartalmaz. A kártyához **nem szükséges ApexCharts vagy más külön HACS frontend-kiegészítő**.
 
 A kártya használatához egyszer hozzá kell adni a mellékelt JavaScript modult a Home Assistant erőforrásaihoz.
 
@@ -132,7 +132,7 @@ Menj ide:
 
 Add meg az alábbi URL-t:
 
-`/mvm_d_tariff/frontend/mvm-d-tariff-card.js?v=0.2.1`
+`/mvm_d_tariff/frontend/mvm-d-tariff-card.js?v=0.2.2`
 
 Típus:
 
@@ -156,11 +156,41 @@ A kártya ezután használatra kész.
 - **Magyar Nemzeti Bank** – hivatalos EUR/HUF árfolyam
 - **MVM** – közzétett D tarifa díjtételek
 
+## 🛡️ API-hibák és adatbiztonság
+
+A v0.2.2-től az integráció külső adatforrásai egymástól függetlenül működnek.
+
+Az aktuális HUPX ár, a napi DAM előrejelzés és az MNB EUR/HUF árfolyam hibája nem állítja le automatikusan a teljes integrációt.
+
+Az integráció több védelmi mechanizmust használ:
+
+- a következő napi DAM adatot előre megpróbálja letölteni és helyileg cache-elni,
+- sikertelen DAM lekérés esetén automatikusan újrapróbálkozik,
+- az MNB átmeneti elérhetetlensége esetén a korábban eltárolt árfolyam használható,
+- az aktuális HUPX ár elsődleges lekérésének hibája esetén az adott napi DAM megfelelő időszaka használható tartalék adatforrásként,
+- egy külső adatforrás hibája nem teszi elérhetetlenné a tőle független szenzorokat.
+
+Ha az adott napi DAM adat átmenetileg egyáltalán nem érhető el, a napi előrejelzés és az arra épülő grafikon átmenetileg adat nélkül maradhat, miközben a rendelkezésre álló független szenzorok tovább működnek.
+
+Az integráció nem használ korábbi napi DAM árakat aktuális napi árként, így API-hiba esetén sem jelenít meg szándékosan elavult árat aktuális adatként.
+
 ## Státusz
 
-🧪 **Fejlesztési verzió – v0.2.1**
+🧪 **Fejlesztési verzió – v0.2.2**
 
-A v0.2.1 javítja az Energy-Charts aktuális ár lekérésének hibakezelését, és ellenállóbbá teszi az entitásokat az átmeneti API-hibákkal szemben.
+A v0.2.2 elsősorban stabilitási és hibakezelési frissítés.
+
+Főbb változások:
+
+- javítva az éjféli napváltás után jelentkező DAM-adatvesztés és helyreállítás,
+- a következő napi DAM adat előzetes cache-elése,
+- automatikus újrapróbálás sikertelen DAM lekérés esetén,
+- az aktuális ár, a DAM és az MNB adatforrások független kezelése,
+- egy API-hiba nem teszi elérhetetlenné a tőle független szenzorokat,
+- javított Home Assistant recorder/statistics kezelés,
+- csökkentett forecast attribútumméret a napi ár-előrejelzési kártya stabil működéséhez.
+
+**A v0.2.1 verzióról történő frissítés erősen ajánlott.**
 
 Az integráció működőképes, de a D tarifa végleges elszámolási szabályainak pontosítása miatt a számítás a későbbiekben változhat.
 
