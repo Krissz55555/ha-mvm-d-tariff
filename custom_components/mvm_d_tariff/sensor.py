@@ -133,9 +133,8 @@ class MvmDTodayForecastSensor(BaseMvmSensor):
     _attr_name = "D tarifa Mai előrejelzett ár"
     _attr_native_unit_of_measurement = "Ft/kWh"
     # This entity primarily carries the daily forecast for the custom card.
-    # Do not create long-term statistics for it: older releases exposed it
-    # without a statistics unit, which causes recorder unit conflicts.
-    _attr_state_class = None
+    # Long-term statistics use the current forecast price as a measurement.
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator, entry):
         super().__init__(coordinator, entry, "today_forecast")
