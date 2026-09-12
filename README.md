@@ -15,6 +15,8 @@ Az integráció célja, hogy a D tarifához kapcsolódó aktuális és day-ahead
 - Opcionális fogyasztásmérő hozzárendelése
 - Havi fogyasztás és becsült **D tarifa költség**
 - Összehasonlítás az **A1 tarifával**
+- Külső adatforrások egymástól független hibakezelése
+- DAM cache és automatikus újrapróbálás átmeneti API-hibák esetén
 
 A teljes napi 96 pontos előrejelzés egyetlen szenzor tömörített strukturált adataként érhető el, ezért az integráció nem hoz létre 96 külön entitást.
 
@@ -122,7 +124,7 @@ A konfiguráció után a szükséges entitások automatikusan létrejönnek.
 
 ## 📈 Napi ár-előrejelzés kártya beállítása
 
-A v0.2.2 saját Home Assistant kártyát tartalmaz. A kártyához **nem szükséges ApexCharts vagy más külön HACS frontend-kiegészítő**.
+Az integráció saját Home Assistant kártyát tartalmaz. A kártyához **nem szükséges ApexCharts vagy más külön HACS frontend-kiegészítő**.
 
 A kártya használatához egyszer hozzá kell adni a mellékelt JavaScript modult a Home Assistant erőforrásaihoz.
 
@@ -132,7 +134,7 @@ Menj ide:
 
 Add meg az alábbi URL-t:
 
-`/mvm_d_tariff/frontend/mvm-d-tariff-card.js?v=0.2.2`
+`/mvm_d_tariff/frontend/mvm-d-tariff-card.js?v=0.2.3`
 
 Típus:
 
@@ -174,11 +176,22 @@ Ha az adott napi DAM adat átmenetileg egyáltalán nem érhető el, a napi elő
 
 Az integráció nem használ korábbi napi DAM árakat aktuális napi árként, így API-hiba esetén sem jelenít meg szándékosan elavult árat aktuális adatként.
 
-## Státusz
+## 🧩 Verzióinformáció
 
-🧪 **Fejlesztési verzió – v0.2.2**
+### v0.2.3
 
-A v0.2.2 elsősorban stabilitási és hibakezelési frissítés.
+A v0.2.3 egy célzott Home Assistant statistics hotfix.
+
+- visszaállítja a **D tarifa – Mai előrejelzett ár** szenzor megfelelő `measurement` state class értékét,
+- javítja azt a Home Assistant figyelmeztetést, amely szerint az entitásnak már nincs állapotosztálya,
+- megtartja a v0.2.2-ben bevezetett DAM cache, retry és független API-kezelési javításokat,
+- nem változtatja meg a napi DAM feldolgozását vagy a költségszámítás működését.
+
+A meglévő hosszú távú statisztikát **nem szükséges törölni** a frissítés előtt.
+
+### v0.2.2
+
+A v0.2.2 elsősorban stabilitási és hibakezelési frissítés volt.
 
 Főbb változások:
 
@@ -187,10 +200,19 @@ Főbb változások:
 - automatikus újrapróbálás sikertelen DAM lekérés esetén,
 - az aktuális ár, a DAM és az MNB adatforrások független kezelése,
 - egy API-hiba nem teszi elérhetetlenné a tőle független szenzorokat,
-- javított Home Assistant recorder/statistics kezelés,
 - csökkentett forecast attribútumméret a napi ár-előrejelzési kártya stabil működéséhez.
 
-**A v0.2.1 verzióról történő frissítés erősen ajánlott.**
+## Státusz
+
+🧪 **Fejlesztési verzió – v0.2.3**
+
+A v0.2.3 a v0.2.2 működését megtartó, célzott Home Assistant statistics hibajavítás.
+
+**A v0.2.2 verzióról történő frissítés ajánlott**, különösen akkor, ha a Home Assistant az alábbihoz hasonló javítási figyelmeztetést jelez:
+
+> „Az entitásnak már nincs állapotosztálya.”
+
+A frissítés után a **D tarifa – Mai előrejelzett ár** szenzor ismét `measurement` állapotosztállyal működik.
 
 Az integráció működőképes, de a D tarifa végleges elszámolási szabályainak pontosítása miatt a számítás a későbbiekben változhat.
 
