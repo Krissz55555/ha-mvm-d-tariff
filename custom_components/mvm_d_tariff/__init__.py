@@ -18,7 +18,7 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 CARD_PATH = FRONTEND_DIR / "mvm-d-tariff-card.js"
 CARD_STATIC_URL = "/mvm_d_tariff/frontend/mvm-d-tariff-card.js"
-CARD_URL = f"{CARD_STATIC_URL}?v=0.2.2"
+CARD_URL = f"{CARD_STATIC_URL}?v=0.2.3"
 
 _FRONTEND_JS_REGISTERED = "_frontend_js_registered"
 
