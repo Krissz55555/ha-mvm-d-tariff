@@ -233,8 +233,8 @@ Developed by Kocsis Krisztián with implementation assistance, architecture disc
 <!-- MVM_D_TARIFF_STATS_START -->
 ## 📊 MVM D tarifa Statistics
 
-- Repository views: **1296**
-- Repository clones: **390**
+- Repository views: **1325**
+- Repository clones: **425**
 - Tracking since: **2026-08-22**
 
 <!-- MVM_D_TARIFF_STATS_END -->
